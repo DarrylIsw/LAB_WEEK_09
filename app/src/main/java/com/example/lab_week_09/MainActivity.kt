@@ -36,6 +36,12 @@ import com.example.lab_week_09.ui.theme.OnBackgroundTitleText
 import com.example.lab_week_09.ui.theme.OnBackgroundItemText
 import com.example.lab_week_09.ui.theme.PrimaryTextButton
 import com.example.lab_week_09.ui.theme.LAB_WEEK_09Theme
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 // ====================
 // Data class
@@ -88,11 +94,21 @@ fun Home(
         onButtonClick = {
             if (inputField.name.isNotBlank()) {
                 listData.add(inputField)
-                inputField = Student("") // reset
+                inputField = Student("") // reset input field
+            } else {
+                // Optionally show a toast message (optional UX improvement)
+                println("Cannot submit empty name") // or Snackbar if using Scaffold
             }
         },
-        navigateFromHomeToResult = { // ✅ corrected parameter name
-            navigateFromHomeToResult(listData.toList().toString())
+        onNavigateToResult = {
+            val moshi = Moshi.Builder().build()
+            val type = Types.newParameterizedType(List::class.java, Student::class.java)
+            val adapter = moshi.adapter<List<Student>>(type)
+            val json = adapter.toJson(listData.toList())
+
+            // Encode JSON for navigation
+            val encodedJson = URLEncoder.encode(json, StandardCharsets.UTF_8.toString())
+            navigateFromHomeToResult(encodedJson)
         }
     )
 }
@@ -106,7 +122,7 @@ fun HomeContent(
     inputField: Student,
     onInputValueChange: (String) -> Unit,
     onButtonClick: () -> Unit,
-    navigateFromHomeToResult: () -> Unit
+    onNavigateToResult: () -> Unit
 ) {
     LazyColumn {
         item {
@@ -139,7 +155,7 @@ fun HomeContent(
 
                     PrimaryTextButton(
                         text = stringResource(id = R.string.button_navigate)
-                    ) { navigateFromHomeToResult() }
+                    ) { onNavigateToResult() }
                 }
             }
         }
@@ -167,8 +183,8 @@ fun App(navController: NavHostController) {
         startDestination = "home"
     ) {
         composable("home") {
-            Home { listData ->
-                navController.navigate("resultContent/?listData=$listData")
+            Home { jsonListData ->
+                navController.navigate("resultContent/?listData=$jsonListData")
             }
         }
 
@@ -176,8 +192,9 @@ fun App(navController: NavHostController) {
             route = "resultContent/?listData={listData}",
             arguments = listOf(navArgument("listData") { type = NavType.StringType })
         ) { backStackEntry ->
-            val listDataArg = backStackEntry.arguments?.getString("listData").orEmpty()
-            ResultContent(listDataArg)
+            val encodedJson = backStackEntry.arguments?.getString("listData").orEmpty()
+            val decodedJson = URLDecoder.decode(encodedJson, StandardCharsets.UTF_8.toString())
+            ResultContent(decodedJson)
         }
     }
 }
@@ -186,16 +203,34 @@ fun App(navController: NavHostController) {
 // ResultContent
 // ====================
 @Composable
-fun ResultContent(listData: String) {
+fun ResultContent(listDataJson: String) {
+    val moshi = Moshi.Builder().build()
+    val type = Types.newParameterizedType(List::class.java, Student::class.java)
+    val adapter = moshi.adapter<List<Student>>(type)
+
+    val studentList = try {
+        adapter.fromJson(listDataJson) ?: emptyList()
+    } catch (e: Exception) {
+        emptyList<Student>()
+    }
+
     Column(
         modifier = Modifier
-            .padding(vertical = 4.dp)
-            .fillMaxSize(),
+            .fillMaxSize()
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        OnBackgroundItemText(text = listData)
+        OnBackgroundTitleText(text = "Result List")
+
+        LazyColumn {
+            items(studentList) { student ->
+                OnBackgroundItemText(text = student.name)
+            }
+        }
     }
 }
+
+
 
 // ====================
 // Preview
